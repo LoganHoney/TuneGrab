@@ -1,0 +1,6 @@
+.env
+.git/
+.github/
+data/
+offload/
+__pycache__/

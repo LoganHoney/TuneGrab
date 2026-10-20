@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+yt-dlp[default]
+ytmusicapi>=1.8
+mutagen>=1.47
+bgutil-ytdlp-pot-provider

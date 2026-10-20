@@ -1,0 +1,7 @@
+.env
+data/*
+!data/.gitkeep
+offload/*
+!offload/.gitkeep
+__pycache__/
+*.pyc

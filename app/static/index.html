@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TuneGrab</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="apple-touch-icon" href="/logo.svg">
+<style>
+  :root {
+    /* Navidrome-like: neutral dark greys, light-blue controls, the brand in Navidrome's blue */
+    --bg: #1b1b1d; --panel: #262628; --ink: #f2f2f3; --muted: #a3a3aa; --line: #3a3a3e;
+    --accent: #90caf9; --accent-ink: #0d1b2a; --brand: #0085ff;
+    --ok: #4ade80; --err: #ff6b6b; --warn: #ffd166;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 18px 20px 0; max-width: 1100px; margin: 0 auto; display: flex; align-items: baseline; gap: 12px; }
+  header h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; color: var(--brand); }
+  header span { color: var(--muted); font-size: 13px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px 20px 60px; display: grid;
+         grid-template-columns: 1fr 340px; gap: 20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding-top: 16px; }
+  header h1 { cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 10px; }
+  header h1 img { width: 34px; height: 34px; }
+  .searchbar { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  .searchbar input { flex: 1; min-width: 0; }
+  .menuwrap { position: relative; }
+  .burger { background: none; border: 1px solid var(--line); color: var(--ink); font-size: 20px; line-height: 1; padding: 7px 11px; }
+  .burger[aria-expanded=true] { border-color: var(--accent); color: var(--accent); }
+  #nav { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: 270px; padding: 6px;
+         background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.55); }
+  #nav button { display: block; width: 100%; text-align: left; background: none; color: var(--ink); padding: 9px 12px; font-weight: 500; }
+  #nav button:hover, #nav button:focus-visible { background: var(--bg); outline: none; }
+  #nav button.on b { color: var(--accent); }
+  #nav small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 400; }
+  .vtitle { margin: 0 0 14px; font-size: 19px; }
+  .pref { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 10px 0;
+          border-bottom: 1px solid var(--line); }
+  .pref span { min-width: 0; }
+  .pref b { display: block; font-weight: 600; }
+  .pref small { display: block; color: var(--muted); font-size: 12.5px; }
+  .pref input[type=number] { width: 80px; text-align: right; }
+  #prefs h3 { margin-top: 22px; } #prefs h3:first-child { margin-top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 12px; border-bottom: 1px solid var(--line); }
+  .chip { display: flex; gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: 99px;
+          padding: 5px 12px; font-size: 13.5px; cursor: pointer; }
+  .chip:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+  .switch { appearance: none; width: 40px; height: 22px; border-radius: 99px; background: var(--line); position: relative;
+            cursor: pointer; flex: none; transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+                   background: var(--ink); transition: transform .15s; }
+  .switch:checked { background: var(--accent); }
+  .switch:checked::after { transform: translateX(18px); background: var(--accent-ink); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border-radius: 0; background: none; color: var(--muted); font-weight: 500; padding: 6px 14px; }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .empty { margin-top: 28px; padding: 28px 20px; text-align: center; color: var(--muted); font-size: 14px;
+           border: 1px dashed var(--line); border-radius: 12px; line-height: 1.6; }
+  .empty b:first-child { display: block; color: var(--ink); font-size: 16px; margin-bottom: 6px; }
+  .song.pick { cursor: pointer; border-radius: 6px; }
+  .song.pick:hover, .song.pick:focus-visible { background: var(--bg); outline: none; }
+  .song .more { padding: 2px 12px; font-size: 18px; line-height: 1.2; }
+  .menu { display: grid; gap: 8px; }
+  .menu button { text-align: left; display: block; width: 100%; padding: 10px 14px; }
+  .menu button small { display: block; color: var(--muted); font-weight: 400; font-size: 12.5px; }
+  .menu button.danger small { color: #c98b8b; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+           max-width: min(520px, calc(100vw - 32px)); padding: 10px 16px; border-radius: 10px; font-size: 14px;
+           background: var(--panel); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0,0,0,.5);
+           transition: opacity .2s, transform .2s; z-index: 10; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  #toast.good { border-color: #1f4d31; } #toast.good::before { content: "✓ "; color: var(--ok); }
+  #toast.bad { border-color: #5a2a2a; color: #ffb3b3; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 0; cursor: pointer;
+           background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.ghost { background: none; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input, select, textarea { font: inherit; color: var(--ink); background: var(--bg);
+           border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row input { flex: 1; min-width: 180px; }
+  textarea { width: 100%; min-height: 140px; resize: vertical; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin-top: 14px; }
+  .card { cursor: pointer; border-radius: 10px; padding: 6px; border: 1px solid transparent; }
+  .card:hover { border-color: var(--accent); background: var(--bg); }
+  .card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--line); display: block; }
+  .card b { display: block; margin-top: 6px; font-size: 14px; line-height: 1.25; }
+  .card small { color: var(--muted); }
+  .songs { margin-top: 14px; }
+  .song { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .song img { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; }
+  .song div { flex: 1; min-width: 0; }
+  .song small { color: var(--muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .album-head { display: flex; gap: 16px; align-items: flex-end; margin-bottom: 12px; }
+  .album-head img { width: 140px; height: 140px; border-radius: 8px; object-fit: cover; }
+  .album-head h2 { margin: 0 0 4px; font-size: 20px; }
+  .tracks label { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .tracks .n { color: var(--muted); width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
+  .tracks .t { flex: 1; }
+  .tracks .d { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tracks .na { opacity: .45; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .job { border-bottom: 1px solid var(--line); padding: 10px 0; }
+  .job:last-child { border-bottom: 0; }
+  .job b { font-size: 14px; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; margin: 6px 0; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+  .items { font-size: 12.5px; margin-top: 4px; }
+  .items div { display: flex; gap: 6px; }
+  .items span:first-child { width: 14px; text-align: center; }
+  .s-done { color: var(--ok); } .s-error { color: var(--err); } .s-skipped { color: var(--muted); }
+  .s-downloading { color: var(--warn); }
+  input[type=checkbox] { accent-color: var(--accent); }
+  .job-actions { margin-top: 6px; display: flex; gap: 6px; }
+  .job-actions button { padding: 4px 10px; font-size: 12.5px; }
+  .ok { color: var(--ok); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .err { color: var(--err); margin-top: 10px; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .toolbar input[type=search] { flex: 1; min-width: 180px; }
+  .toolbar label { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .lib .song { padding: 6px 0; }
+  .lib .song img, .sugg .song img { background: var(--line); }
+  .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .acts button { padding: 4px 9px; font-size: 12.5px; }
+  button.danger { background: none; color: var(--err); border: 1px solid #5a2a2a; font-weight: 500; }
+  .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 99px; border: 1px solid var(--line);
+         color: var(--muted); margin-left: 4px; vertical-align: 1px; }
+  .tag.good { color: var(--ok); border-color: #1f4d31; } .tag.bad { color: var(--warn); border-color: #4d421f; }
+  h3 { font-size: 15px; margin: 18px 0 6px; } h3:first-child { margin-top: 0; }
+  dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px;
+           padding: 18px; width: min(560px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h2 { margin: 0 0 10px; font-size: 18px; }
+  dialog .who { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  dialog .who img { width: 64px; height: 64px; border-radius: 6px; object-fit: cover; background: var(--line); }
+  dialog pre { white-space: pre-wrap; max-height: 50vh; overflow: auto; font: 13px/1.5 inherit; background: var(--bg);
+               padding: 10px; border-radius: 8px; border: 1px solid var(--line); }
+  dialog .foot[hidden] { display: none; }
+  dialog .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+  code { font-size: 12.5px; color: var(--muted); word-break: break-all; }
+  header span { overflow-wrap: anywhere; }
+  #tab-cleanup .song small { white-space: normal; }
+  main > * { min-width: 0; }
+  @media (max-width: 720px) {
+    /* logo and menu on top, the search bar gets its own full-width row */
+    header { grid-template-columns: 1fr auto; row-gap: 12px; }
+    .searchbar { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; }
+    .searchbar input { flex: 1 1 100%; }
+    .searchbar #sgo { flex: 1; }
+  }
+  @media (max-width: 600px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+    .album-head { flex-wrap: wrap; align-items: flex-start; }
+    .album-head img { width: 110px; height: 110px; }
+    .song { flex-wrap: wrap; }
+    .song .acts { flex: 0 0 100%; justify-content: flex-start; padding-left: 54px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 data-tab="search" title="Back to search"><img src="/logo.svg" alt="">TuneGrab</h1>
+  <form id="sform" class="searchbar" role="search">
+    <input id="q" type="search" placeholder="Artist, album or song, or paste a YouTube link" autocomplete="off" aria-label="Search">
+    <span class="seg" id="kind"><button type="button" data-k="albums" class="on">Albums</button><button type="button" data-k="songs">Songs</button></span>
+    <button id="sgo">Search</button>
+  </form>
+  <div class="menuwrap">
+    <button type="button" class="burger" id="burger" aria-label="Menu" aria-expanded="false" aria-controls="nav">☰</button>
+    <nav id="nav" hidden>
+      <button data-tab="library"><b>Library</b><small>Your songs, lyrics and fixes</small></button>
+      <button data-tab="discover"><b>Discover</b><small>Suggestions from your listening</small></button>
+      <button data-tab="playlists"><b>Playlists</b><small>TuneGrab playlists in Navidrome</small></button>
+      <button data-tab="cleanup"><b>Cleanup</b><small>Songs you skip or never play</small></button>
+      <button data-tab="settings"><b>Settings</b><small>YouTube cookies and server info</small></button>
+    </nav>
+  </div>
+</header>
+<main>
+  <section class="panel">
+    <h2 class="vtitle" id="vtitle" hidden></h2>
+
+    <div id="tab-search">
+      <p class="muted" id="shint" style="margin:0">Finds the official audio, not music videos.</p>
+      <div id="results"><div class="empty">
+        <b>Find something to download</b>
+        Search for an album like <i>Imagine Dragons Loom</i>, switch to <b>Songs</b> for a single track,
+        or paste a YouTube or YouTube Music link. Downloads appear in the queue and land in your library, tagged and with cover art.
+      </div></div>
+    </div>
+    <div id="tab-library" hidden>
+      <div class="toolbar">
+        <input type="search" id="lfilter" placeholder="Filter by title, artist or album">
+        <select id="lsort" aria-label="Sort by"><option value="artist">Artist</option><option value="added">Recently added</option>
+          <option value="title">Title</option><option value="album">Album</option></select>
+        <label><input type="checkbox" id="lnolyr"> No lyrics only</label>
+        <button class="ghost" id="lmissing">Find missing lyrics</button>
+      </div>
+      <p class="muted" id="lsummary"></p>
+      <div class="songs lib" id="library"></div>
+    </div>
+
+    <div id="tab-cleanup" hidden>
+      <p class="muted" id="cnote"></p>
+      <div class="row"><button class="ghost" id="creview">Review now</button></div>
+      <h3>Skipped often</h3>
+      <p class="muted" id="crule-skip"></p>
+      <div class="songs" id="cskipped"></div>
+      <h3>Rarely played</h3>
+      <p class="muted" id="crule-rare"></p>
+      <div class="songs" id="crare"></div>
+      <h3>Offloaded</h3>
+      <p class="muted" id="offnote"></p>
+      <div class="songs" id="offloaded"></div>
+    </div>
+
+    <div id="tab-discover" hidden>
+      <div class="toolbar"><b style="flex:1">Suggested for you</b><button class="ghost" id="srefresh">Find new suggestions</button></div>
+      <p class="muted" id="sstatus"></p>
+      <div class="songs sugg" id="suggestions"></div>
+    </div>
+
+    <div id="tab-playlists" hidden>
+      <p class="muted" id="ndstatus"></p>
+      <h3>Playlists in Navidrome</h3>
+      <div id="playlists"></div>
+      <div class="row" style="margin-top:8px"><button class="ghost" id="prebuild">Rebuild now</button></div>
+    </div>
+
+    <div id="tab-settings" hidden>
+      <div id="prefs"><p class="muted">Loading…</p></div>
+      <h3>This server</h3>
+      <p class="muted" id="serverinfo">Checking…</p>
+      <h3>YouTube cookies</h3>
+      <p id="cstatus" class="muted">Checking…</p>
+      <p class="muted">If downloads fail with "confirm you're not a bot", YouTube wants to see a signed-in browser.
+        Use a spare Google account, since automated downloads can get an account flagged.</p>
+      <ol class="muted" style="padding-left:18px">
+        <li>In Chrome or Firefox, install the <b>Get cookies.txt LOCALLY</b> extension.</li>
+        <li>Open a private/incognito window, enable the extension there, sign in at youtube.com, and play any video.</li>
+        <li>Click the extension, choose <b>Export</b> (Netscape format), then close the private window without signing out.</li>
+        <li>Upload that file here, then press <b>Retry failed</b> on the job.</li>
+      </ol>
+      <div class="row">
+        <input type="file" id="cfile" accept=".txt,text/plain">
+        <button id="cupload">Upload cookies</button>
+        <button class="ghost" id="cdelete">Remove</button>
+      </div>
+      <p class="muted" id="potstatus"></p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <b>Queue</b><button class="ghost" id="clear">Clear finished</button>
+    </div>
+    <div id="jobs"><p class="muted">Nothing yet.</p></div>
+  </aside>
+</main>
+
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let toastTimer;
+function toast(t, kind) {
+  clearTimeout(toastTimer);
+  const el = $("#toast");
+  if (!t) { el.className = ""; return; }
+  el.textContent = t; el.className = "show " + kind;
+  toastTimer = setTimeout(() => el.className = "", kind === "bad" ? 7000 : 3500);
+}
+const msg = t => toast(t, "bad");   // errors
+const note = t => toast(t, "good"); // confirmations
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) });
+
+const TITLES = { library: "Library", discover: "Discover", playlists: "Playlists", cleanup: "Cleanup", settings: "Settings" };
+let VIEW = "search";
+function show(tab) {
+  closeMenu();
+  if (tab === VIEW) return;
+  VIEW = tab; msg();
+  document.querySelectorAll("#nav [data-tab]").forEach(x => x.classList.toggle("on", x.dataset.tab === tab));
+  for (const t of ["search", "library", "discover", "playlists", "cleanup", "settings"])
+    $("#tab-" + t).hidden = tab !== t;
+  $("#vtitle").textContent = TITLES[tab] || "";
+  $("#vtitle").hidden = tab === "search";
+  if (tab === "settings") { loadPrefs(); loadCookies(); }
+  if (tab === "library") loadLibrary();
+  if (tab === "discover") loadSuggestions();
+  if (tab === "playlists") loadPlaylists();
+  if (tab === "cleanup") loadCleanup();
+}
+document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => show(b.dataset.tab));
+
+const closeMenu = () => { $("#nav").hidden = true; $("#burger").setAttribute("aria-expanded", "false"); };
+$("#burger").onclick = e => {
+  e.stopPropagation();
+  const open = $("#nav").hidden;
+  $("#nav").hidden = !open; $("#burger").setAttribute("aria-expanded", String(open));
+  if (open) $("#nav button").focus();
+};
+document.addEventListener("click", e => { if (!e.target.closest(".menuwrap")) closeMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#nav").hidden) { closeMenu(); $("#burger").focus(); } });
+
+function showCookies(c) {
+  $("#cstatus").innerHTML = c.present
+    ? `<span class="ok">✓ Cookies loaded</span> · uploaded ${ago(c.updated)}`
+    : "No cookies uploaded.";
+}
+// ------------------------------------------------------------ settings page
+const VERSION_LABELS = { "sped up / slowed": "Sped up / slowed" };
+let PREFS = null;
+async function loadPrefs() {
+  try { PREFS = await api("/api/settings"); drawPrefs(); } catch (e) { msg(e.message); }
+}
+function drawPrefs() {
+  const v = PREFS.values, f = PREFS.fields;
+  const num = (k, label, help) => `<label class="pref"><span><b>${label}</b><small>${help}</small></span>
+      <input type="number" data-k="${k}" min="${f[k].min}" max="${f[k].max}" value="${v[k]}"></label>`;
+  const tog = (k, label, help) => `<label class="pref"><span><b>${label}</b><small>${help}</small></span>
+      <input type="checkbox" class="switch" data-k="${k}" ${v[k] ? "checked" : ""}></label>`;
+  $("#prefs").innerHTML = `
+    <h3>Discover</h3>
+    ${num("max_suggestions", "Suggestions per day", "How many new songs are suggested each day.")}
+    ${num("auto_add", "Added automatically", "How many of those are downloaded on their own. 0 = only when you press Add.")}
+    <h3>Downloads</h3>
+    <label class="pref"><span><b>Audio format</b><small>For new downloads. mp3 plays everywhere; m4a and opus skip a conversion, so they sound a little better.</small></span>
+      <select data-k="audio_format">${f.audio_format.choices.map(c => `<option ${c === v.audio_format ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+    ${tog("lyrics_auto", "Add lyrics automatically", "Look up synced lyrics for every new download.")}
+    ${tog("clean_only", "Clean only", "Never show or download explicit songs.")}
+    <div class="pref"><span><b>Hide these versions</b><small>Left out of search results and unticked on albums.</small></span></div>
+    <div class="chips">${f.hide_versions.choices.map(c => `<label class="chip"><input type="checkbox" data-v="${esc(c)}" ${v.hide_versions.includes(c) ? "checked" : ""}>
+      ${esc(VERSION_LABELS[c] || c[0].toUpperCase() + c.slice(1))}</label>`).join("")}</div>
+    <h3>Playlists</h3>
+    ${num("playlist_size", "Songs per playlist", "Size of the TuneGrab playlists in Navidrome, from the next rebuild.")}`;
+  $("#prefs").querySelectorAll("[data-k]").forEach(el => el.onchange = () =>
+    savePref({ [el.dataset.k]: el.type === "checkbox" ? el.checked : el.value }));
+  $("#prefs").querySelectorAll(".chips input").forEach(el => el.onchange = () =>
+    savePref({ hide_versions: [...$("#prefs").querySelectorAll(".chips input:checked")].map(i => i.dataset.v) }));
+}
+async function savePref(change) {
+  try { PREFS = await post("/api/settings", change); drawPrefs(); note("Saved"); }
+  catch (e) { msg(e.message); drawPrefs(); }
+}
+
+async function loadCookies() { try { showCookies(await api("/api/cookies")); } catch (e) { msg(e.message); } }
+$("#cupload").onclick = async () => {
+  msg();
+  const f = $("#cfile").files[0];
+  if (!f) { msg("Choose your cookies.txt file first."); return; }
+  try { showCookies(await post("/api/cookies", { text: await f.text() })); $("#cfile").value = ""; loadHealth(); }
+  catch (e) { msg(e.message); }
+};
+$("#cdelete").onclick = async () => {
+  if (!confirm("Remove the saved cookies?")) return;
+  showCookies(await api("/api/cookies", { method: "DELETE" })); loadHealth();
+};
+
+let KIND = "albums";
+const LINK = /https?:\/\/\S+/g;
+$("#kind").onclick = e => {
+  const k = e.target.dataset.k; if (!k || k === KIND) return;
+  KIND = k;
+  $("#kind").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  if ($("#q").value.trim() && !/https?:\/\//.test($("#q").value)) $("#sform").requestSubmit();
+};
+$("#q").oninput = () => {
+  const links = ($("#q").value.match(LINK) || []).length;
+  $("#sgo").textContent = links ? (links > 1 ? `Download ${links} links` : "Download link") : "Search";
+  $("#shint").textContent = links ? "YouTube Music album links download as full albums; other links go to Artist/Singles."
+    : "Finds the official audio, not music videos.";
+};
+$("#sform").onsubmit = async e => {
+  e.preventDefault(); show("search"); msg();
+  const q = $("#q").value.trim(); if (!q) return;
+  const links = q.match(LINK);
+  if (links) {
+    try { await post("/api/download/urls", { urls: links }); $("#q").value = ""; $("#q").oninput(); note(`Downloading ${links.length > 1 ? links.length + " links" : "the link"}`); refresh(); }
+    catch (err) { msg(err.message); }
+    return;
+  }
+  $("#results").innerHTML = '<p class="muted">Searching…</p>';
+  try {
+    const res = await api(`/api/search?q=${encodeURIComponent(q)}&kind=${KIND}`);
+    if (!res.length) { $("#results").innerHTML = '<p class="muted">No results. If you hide some versions or turn on Clean only in Settings, those are left out.</p>'; return; }
+    if (res[0].kind === "album") {
+      $("#results").innerHTML = '<div class="grid">' + res.map(a => `
+        <div class="card" data-id="${esc(a.browseId)}">
+          <img src="${esc(a.thumb)}" alt="" loading="lazy">
+          <b>${esc(a.title)}</b>
+          <small>${esc(a.artist)} · ${esc(a.type)}${a.year ? " · " + esc(a.year) : ""}</small>
+        </div>`).join("") + "</div>";
+      document.querySelectorAll(".card").forEach(c => c.onclick = () => openAlbum(c.dataset.id));
+    } else {
+      $("#results").innerHTML = '<div class="songs">' + res.map(s => `
+        <div class="song">
+          <img src="${esc(s.thumb)}" alt="" loading="lazy">
+          <div><b>${esc(s.title)}</b><small>${esc(s.artist)}${s.album ? " · " + esc(s.album) : ""}${s.duration ? " · " + esc(s.duration) : ""}</small></div>
+          ${s.owned ? '<span class="tag good">in library</span>' : `<button class="ghost" data-v="${esc(s.videoId)}" data-t="${esc(s.title)}">Download</button>`}
+        </div>`).join("") + "</div>";
+      document.querySelectorAll("#results .song button").forEach(b => b.onclick = async () => {
+        b.disabled = true; b.textContent = "Queued";
+        try { await post("/api/download/song", { videoId: b.dataset.v, title: b.dataset.t }); note(`Downloading ${b.dataset.t}`); refresh(); }
+        catch (err) { msg(err.message); b.disabled = false; b.textContent = "Download"; }
+      });
+    }
+  } catch (err) { $("#results").innerHTML = ""; msg(err.message); }
+};
+
+async function openAlbum(id) {
+  msg(); $("#results").innerHTML = '<p class="muted">Loading album…</p>';
+  try {
+    const a = await api(`/api/album/${encodeURIComponent(id)}`);
+    $("#results").innerHTML = `
+      <p><button class="ghost" id="back">← Back to results</button></p>
+      <div class="album-head">
+        <img src="${esc(a.thumb)}" alt="">
+        <div><h2>${esc(a.title)}</h2><div class="muted">${esc(a.artist)} · ${esc(a.type)}${a.year ? " · " + esc(a.year) : ""} · ${a.tracks.length} tracks</div>
+        <div class="row" style="margin-top:10px"><button id="dlall">Download</button><button class="ghost" id="selall" type="button">Select none</button></div></div>
+      </div>
+      <div class="tracks">${a.tracks.map(t => `
+        <label class="${t.available ? "" : "na"}">
+          <input type="checkbox" value="${esc(t.videoId)}" ${!t.available ? "disabled" : t.owned || t.unwanted ? "" : "checked"}>
+          <span class="n">${esc(t.n)}</span><span class="t">${esc(t.title)}${t.artist !== a.artist ? ' <span class="muted">· ' + esc(t.artist) + "</span>" : ""}${t.owned ? '<span class="tag good">in library</span>' : t.unwanted ? '<span class="tag">hidden by your settings</span>' : ""}</span>
+          <span class="d">${esc(t.duration || "")}</span>
+        </label>`).join("")}</div>`;
+    $("#back").onclick = () => $("#sform").requestSubmit();
+    const avail = a.tracks.filter(t => t.available).length;
+    const owned = a.tracks.filter(t => t.owned).length;
+    const count = () => {
+      const n = document.querySelectorAll(".tracks input:checked").length;
+      $("#dlall").textContent = n === avail ? `Download album (${n} songs)` : n ? `Download ${n} song${n === 1 ? "" : "s"}`
+        : owned === avail ? "You have this album" : "Nothing selected";
+      $("#dlall").disabled = !n;
+      $("#selall").textContent = n === avail ? "Select none" : "Select all";
+    };
+    document.querySelectorAll(".tracks input").forEach(i => i.onchange = count);
+    $("#selall").onclick = () => {
+      const on = document.querySelectorAll(".tracks input:checked").length !== avail;
+      document.querySelectorAll(".tracks input:not(:disabled)").forEach(i => i.checked = on);
+      count();
+    };
+    count();
+    $("#dlall").onclick = async () => {
+      const boxes = [...document.querySelectorAll(".tracks input:checked")];
+      const all = boxes.length === avail;
+      $("#dlall").disabled = true; $("#dlall").textContent = "Queued";
+      try { await post("/api/download/album", { browseId: a.browseId, videoIds: all ? null : boxes.map(b => b.value) }); note(`Downloading ${a.title}`); refresh(); }
+      catch (err) { msg(err.message); count(); }
+    };
+  } catch (err) { $("#results").innerHTML = ""; msg(err.message); }
+}
+
+$("#clear").onclick = async () => { await api("/api/jobs", { method: "DELETE" }); refresh(); };
+
+const ICON = { queued: "·", downloading: "↓", done: "✓", skipped: "–", error: "✕" };
+async function refresh() {
+  try {
+    const jobs = await api("/api/jobs");
+    if (!jobs.length) { $("#jobs").innerHTML = '<p class="muted">Nothing yet.</p>'; return; }
+    $("#jobs").innerHTML = jobs.map(j => {
+      const n = j.items.length, fin = j.items.filter(i => ["done", "skipped", "error"].includes(i.status)).length;
+      const pct = n ? Math.round(fin / n * 100) : (j.status === "done" ? 100 : 0);
+      return `<div class="job">
+        <b>${esc(j.title)}</b>
+        <div class="muted">${esc(j.status)}${n ? ` · ${fin}/${n}` : ""}${j.error ? " · " + esc(j.error) : ""}</div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        ${n ? `<details ${j.status === "running" ? "open" : ""}><summary>Tracks</summary><div class="items">${j.items.map(i =>
+          `<div class="s-${esc(i.status)}" title="${esc(i.message)}"><span>${ICON[i.status] || "·"}</span><span>${esc(i.title)}${i.status === "error" ? " — " + esc(i.message) : ""}</span></div>`).join("")}</div></details>` : ""}
+        ${["done", "error"].includes(j.status) && j.items.some(i => i.status === "error")
+          ? `<div class="job-actions"><button data-retry="${esc(j.id)}">Retry failed</button></div>` : ""}
+      </div>`;
+    }).join("");
+  } catch (e) { /* server restarting */ }
+}
+$("#jobs").addEventListener("click", async e => {
+  const id = e.target.dataset.retry; if (!id) return;
+  e.target.disabled = true; e.target.textContent = "Queued";
+  try { await post(`/api/jobs/${encodeURIComponent(id)}/retry`, {}); refresh(); }
+  catch (err) { msg(err.message); e.target.disabled = false; e.target.textContent = "Retry failed"; }
+});
+setInterval(refresh, 2500); refresh();
+
+// ------------------------------------------------------------ library
+let LIB = [];
+const cover = p => `/api/library/cover?path=${encodeURIComponent(p)}`;
+const mmss = s => s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "";
+function ago(t) {
+  if (!t) return "never";
+  const s = Date.now() / 1000 - t, f = (n, u) => `${n} ${u}${n === 1 ? "" : "s"} ago`;
+  if (s < 60) return "just now";
+  if (s < 3600) return f(Math.floor(s / 60), "minute");
+  if (s < 86400) return f(Math.floor(s / 3600), "hour");
+  if (s < 7 * 86400) return f(Math.floor(s / 86400), "day");
+  return new Date(t * 1000).toLocaleDateString();
+}
+const byPath = p => LIB.find(t => t.path === p);
+const dlg = $("#dlg");
+const closeDlg = () => dlg.close();
+
+let OFFLOAD = { available: false, items: [] };
+async function loadLibrary() {
+  try {
+    [LIB, OFFLOAD] = await Promise.all([api("/api/library"), api("/api/offloaded")]);
+    drawLibrary();
+  } catch (e) { msg(e.message); }
+}
+function drawOffloaded() {
+  $("#offnote").textContent = OFFLOAD.available
+    ? "Moved out of your library (Navidrome no longer sees them) but kept on disk. Restore puts a song back exactly where it was."
+    : `The offload folder (${OFFLOAD.dir}) isn't mounted, so offloading is unavailable. See the README.`;
+  $("#offloaded").innerHTML = OFFLOAD.items.map(s => `
+    <div class="song"><div><b>${esc(s.title)}</b><small>${esc(s.artist)}${s.album ? " · " + esc(s.album) : ""}${s.at ? " · offloaded " + ago(s.at) : ""}</small></div>
+      <div class="acts" data-p="${esc(s.path)}"><button class="ghost" data-a="restore">Restore</button></div></div>`).join("")
+    || (OFFLOAD.available ? '<p class="muted">Nothing offloaded.</p>' : "");
+}
+$("#offloaded").addEventListener("click", async e => {
+  if (e.target.dataset.a !== "restore") return;
+  e.target.disabled = true;
+  try { await post("/api/offloaded/restore", { path: e.target.closest(".acts").dataset.p }); loadCleanup(); }
+  catch (err) { msg(err.message); e.target.disabled = false; }
+});
+function drawLibrary() {
+  const f = $("#lfilter").value.toLowerCase(), nolyr = $("#lnolyr").checked;
+  const rows = LIB.filter(t => (!nolyr || !t.lyrics) &&
+    (!f || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(f)));
+  const by = $("#lsort").value, cmp = (x, y) => String(x).localeCompare(String(y), undefined, { sensitivity: "base" });
+  if (by === "added") rows.sort((x, y) => y.added - x.added);
+  if (by === "title") rows.sort((x, y) => cmp(x.title, y.title));
+  if (by === "album") rows.sort((x, y) => cmp(x.album, y.album) || (parseInt(x.track) || 0) - (parseInt(y.track) || 0));
+  try { localStorage.setItem("tg-sort", by); } catch (e) { /* private mode */ }
+  const missing = LIB.filter(t => !t.lyrics).length;
+  $("#lsummary").textContent = `${LIB.length} songs` + (missing ? ` · ${missing} without lyrics` : "") +
+    (rows.length !== LIB.length ? ` · showing ${rows.length}` : "");
+  $("#library").innerHTML = rows.map(t => `
+    <div class="song pick" data-p="${esc(t.path)}" tabindex="0">
+      <img src="${cover(t.path)}" alt="" loading="lazy">
+      <div><b>${esc(t.title)}</b>${t.lyrics ? "" : '<span class="tag bad">no lyrics</span>'}${t.backup ? '<span class="tag">replaced</span>' : ""}
+        <small>${esc(t.artist)} · ${esc(t.album)} · ${mmss(t.duration)}</small></div>
+      <button class="ghost more" aria-label="Song options" title="Song options">⋯</button>
+    </div>`).join("") || '<p class="muted">No songs match.</p>';
+}
+$("#lfilter").oninput = drawLibrary;
+$("#lnolyr").onchange = drawLibrary;
+$("#lsort").onchange = drawLibrary;
+try { const v = localStorage.getItem("tg-sort"); if (v) $("#lsort").value = v; } catch (e) { /* private mode */ }
+$("#lmissing").onclick = async () => {
+  try { await post("/api/library/lyrics", {}); note("Looking up missing lyrics, see the queue"); refresh(); }
+  catch (e) { msg(e.message); }
+};
+const openSong = el => { const row = el.closest(".pick"); if (row) showSong(byPath(row.dataset.p)); };
+$("#library").addEventListener("click", e => openSong(e.target));
+$("#library").addEventListener("keydown", e => { if (e.key === "Enter") openSong(e.target); });
+
+// one menu per song instead of a row of buttons
+function showSong(t) {
+  dlg.innerHTML = `${who(t)}
+    <p class="muted">${mmss(t.duration)} · ${t.bitrate} kbps · ${t.lyrics ? "has lyrics" : "no lyrics yet"}${t.backup ? " · audio was replaced" : ""}</p>
+    <div class="menu">
+      <button class="ghost" data-a="lyrics"><b>Lyrics</b><small>View, look up again or fix the timing</small></button>
+      <button class="ghost" data-a="replace"><b>Replace audio</b><small>Swap in a better version; tags and play counts stay</small></button>
+      ${t.backup ? '<button class="ghost" data-a="undo"><b>Undo replace</b><small>Put the previous audio back</small></button>' : ""}
+      <button class="ghost" data-a="offload"><b>Offload</b><small>Move out of the library without deleting</small></button>
+      <button class="danger" data-a="delete"><b>Delete</b><small>Remove the file for good</small></button>
+    </div>
+    <div class="foot"><button class="ghost" id="sclose">Close</button></div>`;
+  dlg.showModal();
+  $("#sclose").onclick = closeDlg;
+  dlg.querySelectorAll(".menu button").forEach(b => b.onclick = () =>
+    ({ lyrics: showLyrics, replace: showReplace, delete: showDelete, undo: undoReplace, offload: showOffload })[b.dataset.a](t));
+}
+const who = t => `<div class="who"><img src="${cover(t.path)}" alt=""><div><b>${esc(t.title)}</b>
+  <div class="muted">${esc(t.artist)} · ${esc(t.album)}${t.year ? " · " + esc(t.year) : ""}</div></div></div>`;
+
+function showDelete(t) {
+  dlg.innerHTML = `<h2>Delete this song?</h2>${who(t)}
+    <p>This permanently deletes <code>${esc(t.path)}</code> from your music folder. Navidrome drops it (and its playlist entries) on the next scan. It can be downloaded again later.</p>
+    <p class="muted">Type <b>delete</b> to confirm.</p>
+    <input id="dconfirm" autocomplete="off" style="width:100%">
+    <div class="foot"><button class="ghost" id="dcancel">Cancel</button><button class="danger" id="dgo" disabled>Delete permanently</button></div>`;
+  dlg.showModal();
+  $("#dconfirm").oninput = e => $("#dgo").disabled = e.target.value.trim().toLowerCase() !== "delete";
+  $("#dcancel").onclick = closeDlg;
+  $("#dgo").onclick = async () => {
+    $("#dgo").disabled = true;
+    try { await post("/api/library/delete", { path: t.path, confirm: t.path }); closeDlg(); note(`Deleted ${t.title}`); loadLibrary(); }
+    catch (e) { closeDlg(); msg(e.message); }
+  };
+}
+
+function showOffload(t) {
+  if (!OFFLOAD.available) { msg(`The offload folder (${OFFLOAD.dir}) isn't mounted, see the README.`); return; }
+  dlg.innerHTML = `<h2>Offload this song?</h2>${who(t)}
+    <p>Moves it out of your library into <code>${esc(OFFLOAD.dir)}</code>. Navidrome stops showing it after the next scan.
+      Nothing is deleted, and you can restore it from the Cleanup tab.</p>
+    <div class="foot"><button class="ghost" id="ocancel">Cancel</button><button id="ogo">Offload</button></div>`;
+  dlg.showModal();
+  $("#ocancel").onclick = closeDlg;
+  $("#ogo").onclick = async () => {
+    $("#ogo").disabled = true;
+    try { await post("/api/library/offload", { path: t.path }); closeDlg(); note(`Offloaded ${t.title}`); loadLibrary(); }
+    catch (e) { closeDlg(); msg(e.message); }
+  };
+}
+
+async function undoReplace(t) {
+  closeDlg();
+  if (!confirm(`Put back the previous audio for "${t.title}"?`)) return;
+  try { await post("/api/library/undo-replace", { path: t.path }); note("Previous audio restored"); loadLibrary(); } catch (e) { msg(e.message); }
+}
+
+async function showLyrics(t) {
+  dlg.innerHTML = `<h2>Lyrics</h2>${who(t)}<pre id="ltext">Loading…</pre>
+    <div class="foot" id="lshift" hidden><span class="muted" style="margin-right:auto">Out of step? Nudge every line:</span>
+      <button class="ghost" data-s="-0.5">Earlier 0.5s</button><button class="ghost" data-s="0.5">Later 0.5s</button></div>
+    <div class="foot"><button class="ghost" id="lclose">Close</button><button id="lfetch">${t.lyrics ? "Look up again" : "Find lyrics"}</button></div>`;
+  dlg.showModal();
+  $("#lclose").onclick = closeDlg;
+  const show = text => {
+    $("#ltext").textContent = text || "No lyrics in this file yet.";
+    $("#lshift").hidden = !/\[\d+:\d+(\.\d+)?\]/.test(text || "");
+  };
+  $("#lshift").querySelectorAll("button").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { show((await post("/api/library/lyrics/shift", { path: t.path, seconds: +b.dataset.s })).text); }
+    catch (e) { msg(e.message); }
+    b.disabled = false;
+  });
+  $("#lfetch").onclick = async () => {
+    try { await post("/api/library/lyrics", { paths: [t.path], force: true }); closeDlg(); note("Looking up lyrics, see the queue"); refresh(); }
+    catch (e) { closeDlg(); msg(e.message); }
+  };
+  try {
+    const { text } = await api(`/api/library/lyrics?path=${encodeURIComponent(t.path)}`);
+    show(text);
+  } catch (e) { $("#ltext").textContent = e.message; }
+}
+
+function showReplace(t) {
+  dlg.innerHTML = `<h2>Replace the audio</h2>${who(t)}
+    <p class="muted">Pick a better version. Title, artist, album, track number, cover art and lyrics all stay as they are.
+      The current audio is kept for a while so you can undo.</p>
+    <form class="row" id="rform"><input id="rq" value="${esc(t.artist + " " + t.title)}"><button class="ghost">Search</button></form>
+    <div class="songs" id="rresults" style="max-height:40vh;overflow:auto"></div>
+    <p class="muted" style="margin-bottom:4px">…or paste a YouTube / YouTube Music link:</p>
+    <div class="row"><input id="rurl" placeholder="https://music.youtube.com/watch?v=…"><button id="rurlgo">Use link</button></div>
+    <div class="foot"><button class="ghost" id="rcancel">Cancel</button></div>`;
+  dlg.showModal();
+  $("#rcancel").onclick = closeDlg;
+  const go = async source => {
+    try { await post("/api/library/replace", { path: t.path, source }); closeDlg(); note("Replacing the audio, see the queue"); refresh(); }
+    catch (e) { closeDlg(); msg(e.message); }
+  };
+  $("#rurlgo").onclick = () => $("#rurl").value.trim() && go($("#rurl").value.trim());
+  $("#rform").onsubmit = async e => {
+    e.preventDefault();
+    $("#rresults").innerHTML = '<p class="muted">Searching…</p>';
+    try {
+      const res = await api(`/api/search?q=${encodeURIComponent($("#rq").value)}&kind=songs`);
+      $("#rresults").innerHTML = res.map(s => `<div class="song"><img src="${esc(s.thumb)}" alt="" referrerpolicy="no-referrer">
+        <div><b>${esc(s.title)}</b><small>${esc(s.artist)}${s.album ? " · " + esc(s.album) : ""}${s.duration ? " · " + esc(s.duration) : ""}</small></div>
+        <button class="ghost" data-v="${esc(s.videoId)}">Use this</button></div>`).join("") || '<p class="muted">No results.</p>';
+      $("#rresults").querySelectorAll("button").forEach(b => b.onclick = () => go(b.dataset.v));
+    } catch (err) { $("#rresults").innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+  };
+  $("#rform").requestSubmit();
+}
+
+// ------------------------------------------------------------ discover
+async function loadSuggestions() {
+  try {
+    const d = await api("/api/suggestions");
+    const st = d.status;
+    $("#sstatus").innerHTML = (st.task === "suggestions" ? `<span class="ok">Working: ${esc(st.detail || "looking for songs")}…</span><br>` : "")
+      + (st.errors.suggestions ? `<span class="err">Last run failed: ${esc(st.errors.suggestions)}</span><br>` : "")
+      + `Based on what you play most in Navidrome. Explicit songs are never suggested or added. `
+      + (d.auto_add ? `The top ${d.auto_add} are added automatically each day. ` : "")
+      + `Last checked: ${ago(st.last_suggestions)}.`;
+    $("#suggestions").innerHTML = d.items.map(s => `
+      <div class="song">
+        <img src="${esc(s.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        <div><b>${esc(s.title)}</b><small>${esc(s.artist)}${s.album ? " · " + esc(s.album) : ""}${s.duration ? " · " + esc(s.duration) : ""}</small>
+          <small>${esc(s.reason)}</small></div>
+        <div class="acts" data-v="${esc(s.video_id)}">${s.status === "added" ? '<span class="tag good">added</span>'
+          : '<button data-a="add">Add</button><button class="ghost" data-a="dismiss">Not for me</button>'}</div>
+      </div>`).join("") || '<p class="muted">No suggestions yet. Listen to a few songs in Navidrome, then press "Find new suggestions".</p>';
+    if (st.task === "suggestions") setTimeout(() => !$("#tab-discover").hidden && loadSuggestions(), 3000);
+  } catch (e) { msg(e.message); }
+}
+$("#srefresh").onclick = async () => {
+  try { await post("/api/suggestions/refresh", {}); loadSuggestions(); } catch (e) { msg(e.message); }
+};
+$("#suggestions").addEventListener("click", async e => {
+  const a = e.target.dataset.a; if (!a) return;
+  const v = e.target.closest(".acts").dataset.v;
+  e.target.disabled = true;
+  try { await post(`/api/suggestions/${encodeURIComponent(v)}/${a}`, {}); if (a === "add") refresh(); loadSuggestions(); }
+  catch (err) { msg(err.message); e.target.disabled = false; }
+});
+
+// ------------------------------------------------------------ playlists
+async function loadPlaylists() {
+  try {
+    const d = await api("/api/playlists");
+    const nd = d.navidrome, st = d.scheduler;
+    $("#ndstatus").innerHTML = !nd.configured ? '<span class="err">Navidrome isn\'t configured, so playlists and suggestions are off.</span>'
+      : nd.ok ? `<span class="ok">✓ Connected to Navidrome ${esc(nd.version || "")} as ${esc(nd.user)}</span>`
+      : `<span class="err">Can't reach Navidrome as ${esc(nd.user)}: ${esc(nd.error)}</span>`;
+    const pl = d.playlists;
+    $("#playlists").innerHTML = (st.task === "playlists" ? '<p class="ok">Rebuilding…</p>' : "")
+      + (st.errors.playlists ? `<p class="err">Last rebuild failed: ${esc(st.errors.playlists)}</p>` : "")
+      + (pl.lists.length ? pl.lists.map(p => `<div class="song"><div><b>${esc(p.name)}</b>
+          <small>${p.skipped ? esc(p.skipped) : p.songs + " songs"}</small></div></div>`).join("")
+          + `<p class="muted">Rebuilt every few hours from your play counts, stars and ratings. Last built: ${ago(pl.at)}.</p>`
+        : '<p class="muted">Not built yet.</p>');
+    if (st.task === "playlists") setTimeout(() => !$("#tab-playlists").hidden && loadPlaylists(), 3000);
+  } catch (e) { msg(e.message); }
+}
+// ------------------------------------------------------------ cleanup
+async function loadCleanup() {
+  try {
+    const [d, off] = await Promise.all([api("/api/cleanup"), api("/api/offloaded")]);
+    OFFLOAD = off; drawOffloaded();
+    const r = d.report, st = d.scheduler;
+    $("#cnote").innerHTML = (st.task === "playlists" ? '<span class="ok">Reviewing…</span> ' : "")
+      + "Suggestions only: nothing here is moved unless you press Offload. Keep hides a song from these lists for good. "
+      + `Reviewed every few hours alongside the playlists. Last review: ${ago(r && r.at)}.`;
+    if (!r) { $("#cskipped").innerHTML = $("#crare").innerHTML = '<p class="muted">Not reviewed yet.</p>'; return; }
+    const ru = r.rules;
+    $("#crule-skip").textContent = ru.skip_log
+      ? `Skipped ${ru.skip_min}+ times in the last ${ru.window_days} days, and skips make up at least ${Math.round(ru.skip_ratio * 100)}% of its listens. A skip is moving on before the halfway point without Navidrome counting a play.`
+      : "The skip log is turned off (SKIP_LOG=false).";
+    $("#crule-rare").textContent = `In your library for ${ru.rare_days}+ days, played at most once, and not in the last ${ru.rare_days} days. Starred and 4★+ songs are left out.`;
+    const acts = p => `<div class="acts" data-p="${esc(p)}"><button class="ghost" data-a="keep">Keep</button>${OFFLOAD.available ? '<button class="ghost" data-a="offload">Offload</button>' : ""}</div>`;
+    const img = p => `<img src="${cover(p)}" alt="" loading="lazy">`;
+    $("#cskipped").innerHTML = r.skipped.map(s => `<div class="song">${img(s.path)}<div><b>${esc(s.title)}</b>
+        <small>${esc(s.artist)} · ${s.skips} skips · ${s.plays} plays · usually skipped after ${s.avg_listened}s</small></div>${acts(s.path)}</div>`).join("")
+      || '<p class="muted">Nothing skipped often.</p>';
+    $("#crare").innerHTML = r.rare.map(s => `<div class="song">${img(s.path)}<div><b>${esc(s.title)}</b>
+        <small>${esc(s.artist)} · ${s.plays ? "played once" + (s.last_played ? ", " + ago(s.last_played) : "") : "never played"} · added ${new Date(s.added * 1000).toLocaleDateString()}</small></div>${acts(s.path)}</div>`).join("")
+      || '<p class="muted">Nothing yet.</p>';
+    if (st.task === "playlists") setTimeout(() => !$("#tab-cleanup").hidden && loadCleanup(), 3000);
+  } catch (e) { msg(e.message); }
+}
+$("#creview").onclick = async () => { try { await post("/api/playlists/rebuild", {}); loadCleanup(); } catch (e) { msg(e.message); } };
+["#cskipped", "#crare"].forEach(id => $(id).addEventListener("click", async e => {
+  const a = e.target.dataset.a; if (!a) return;
+  const path = e.target.closest(".acts").dataset.p;
+  if (a === "offload" && !confirm("Move this song out of your library into the offload folder? You can restore it later.")) return;
+  e.target.disabled = true;
+  try { await post(a === "keep" ? "/api/cleanup/keep" : "/api/library/offload", { path }); loadCleanup(); }
+  catch (err) { msg(err.message); e.target.disabled = false; }
+}));
+$("#prebuild").onclick = async () => { try { await post("/api/playlists/rebuild", {}); loadPlaylists(); } catch (e) { msg(e.message); } };
+function loadHealth() {
+  api("/api/health").then(h => {
+    $("#serverinfo").textContent = `Saves ${h.format} files to ${h.music_dir}. YouTube cookies ${h.cookies ? "loaded" : "not uploaded"}.`;
+    $("#potstatus").textContent = h.pot_provider ? "Token helper: connected." : "Token helper: not configured.";
+  }).catch(() => {});
+}
+loadHealth();
+</script>
+</body>
+</html>

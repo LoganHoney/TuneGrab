@@ -1,0 +1,29 @@
+# Settings live in .env (copy .env.example). You shouldn't need to edit this file.
+services:
+  tunegrab:
+    build: .
+    # or use the prebuilt image instead of building:
+    # image: ghcr.io/loganhoney/tunegrab:latest
+    container_name: tunegrab
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    depends_on:
+      - bgutil
+    ports:
+      - "${PORT:-8095}:8000"
+    extra_hosts:
+      - host.docker.internal:host-gateway   # reach Navidrome/Jellyfin running on the same machine
+    env_file: .env
+    environment:
+      - POT_PROVIDER_URL=http://bgutil:4416
+    volumes:
+      - ${MUSIC_PATH:?Set MUSIC_PATH in .env}:/music
+      - ${OFFLOAD_PATH:-./offload}:/offload
+      - ./data:/data
+
+  # Generates the "proof of origin" tokens YouTube now asks for; without it many downloads fail
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: tunegrab-bgutil
+    restart: unless-stopped
+    init: true
