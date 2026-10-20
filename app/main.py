@@ -85,10 +85,16 @@ def index():
     return FileResponse(os.path.join(STATIC, "index.html"))
 
 
-@app.get("/logo.svg")
-def logo():
-    return FileResponse(os.path.join(STATIC, "logo.svg"), media_type="image/svg+xml",
-                        headers={"Cache-Control": "max-age=86400"})
+# the logo, home-screen icons (iOS only uses a PNG apple-touch-icon) and the web app manifest
+ICONS = {"logo.svg": "image/svg+xml", "apple-touch-icon.png": "image/png", "icon-192.png": "image/png",
+         "icon-512.png": "image/png", "manifest.webmanifest": "application/manifest+json"}
+
+
+@app.get("/{name}", include_in_schema=False)
+def icon(name: str):
+    if name not in ICONS:
+        raise HTTPException(404, "Not found")
+    return FileResponse(os.path.join(STATIC, name), media_type=ICONS[name], headers={"Cache-Control": "max-age=86400"})
 
 
 @app.get("/api/health")
