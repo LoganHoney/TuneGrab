@@ -73,6 +73,21 @@ If you add or change Navidrome settings later, run `docker compose up -d` to app
 git pull && docker compose up -d --build
 ```
 
+### Add it to your phone's home screen
+
+TuneGrab works like an app on your phone: it gets the TuneGrab icon and opens full screen, without the browser's address bar.
+
+**iPhone / iPad (Safari)**
+1. Open TuneGrab in **Safari** (e.g. `http://your-server:8095`).
+2. Tap the **Share** button (the square with an arrow pointing up).
+3. Scroll down and tap **Add to Home Screen**, then **Add**.
+
+**Android (Chrome)**
+1. Open TuneGrab in **Chrome**.
+2. Tap the **⋮** menu, then **Add to Home screen** (or **Install app**).
+
+If you added TuneGrab before the icon existed, delete the old shortcut and add it again. Phones save the icon when the shortcut is created and don't update it afterwards.
+
 ## Features
 
 **Search & download**
