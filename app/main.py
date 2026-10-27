@@ -50,8 +50,8 @@ class PathReq(BaseModel):
 
 
 class DeleteReq(BaseModel):
-    path: str
-    confirm: str  # must repeat the path, so a stray request can't delete anything
+    paths: List[str]
+    confirm: List[str]  # must repeat the paths, so a stray request can't delete anything
 
 
 class ReplaceReq(BaseModel):
@@ -217,15 +217,19 @@ def library_lyrics(path: str):
 
 @app.post("/api/library/delete")
 def library_delete(req: DeleteReq):
-    _song(req.path)
-    if req.confirm != req.path:
+    if not req.paths:
+        raise HTTPException(400, "No songs picked")
+    if req.confirm != req.paths:
         raise HTTPException(400, "Confirmation didn't match")
-    vid = library.delete(req.path)
-    if vid:
-        dl.remove_archive(vid)
-    navidrome.drop_from_cleanup(req.path)
+    for p in req.paths:  # check them all before deleting any
+        _song(p)
+    for p in req.paths:
+        vid = library.delete(p)
+        if vid:
+            dl.remove_archive(vid)
+        navidrome.drop_from_cleanup(p)
     navidrome.scan()
-    return {"ok": True}
+    return {"ok": True, "deleted": len(req.paths)}
 
 
 @app.post("/api/library/replace")

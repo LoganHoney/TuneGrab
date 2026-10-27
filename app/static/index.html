@@ -71,6 +71,13 @@
   .song.pick { cursor: pointer; border-radius: 6px; }
   .song.pick:hover, .song.pick:focus-visible { background: var(--bg); outline: none; }
   .song .more { padding: 2px 12px; font-size: 18px; line-height: 1.2; }
+  .song .tick { width: 20px; height: 20px; margin: 0 8px; pointer-events: none; }
+  .song.pick.on { background: var(--bg); }
+  .selbar { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 0;
+            background: var(--panel); border-top: 1px solid var(--line); }
+  .selbar[hidden] { display: none; }
+  .selbar b { margin-right: auto; }
+  dialog .dlist { max-height: 40vh; overflow: auto; margin: 0 0 12px; padding-left: 18px; font-size: 14px; }
   .menu { display: grid; gap: 8px; }
   .menu button { text-align: left; display: block; width: 100%; padding: 10px 14px; }
   .menu button small { display: block; color: var(--muted); font-weight: 400; font-size: 12.5px; }
@@ -208,9 +215,16 @@
           <option value="title">Title</option><option value="album">Album</option></select>
         <label><input type="checkbox" id="lnolyr"> No lyrics only</label>
         <button class="ghost" id="lmissing">Find missing lyrics</button>
+        <button class="ghost" id="lselect">Select</button>
       </div>
       <p class="muted" id="lsummary"></p>
       <div class="songs lib" id="library"></div>
+      <div class="selbar" id="lselbar" hidden>
+        <b id="lselcount">0 selected</b>
+        <button class="ghost" id="lselall">Select all shown</button>
+        <button class="danger" id="lseldel" disabled>Delete</button>
+        <button class="ghost" id="lseldone">Done</button>
+      </div>
     </div>
 
     <div id="tab-cleanup" hidden>
@@ -522,6 +536,8 @@ const dlg = $("#dlg");
 const closeDlg = () => dlg.close();
 
 let OFFLOAD = { available: false, items: [] };
+let SEL = null; // Set of picked paths while in Select mode, else null
+let SHOWN = []; // songs the filter currently shows, for "Select all shown"
 async function loadLibrary() {
   try {
     [LIB, OFFLOAD] = await Promise.all([api("/api/library"), api("/api/offloaded")]);
@@ -547,6 +563,7 @@ function drawLibrary() {
   const f = $("#lfilter").value.toLowerCase(), nolyr = $("#lnolyr").checked;
   const rows = LIB.filter(t => (!nolyr || !t.lyrics) &&
     (!f || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(f)));
+  SHOWN = rows;
   const by = $("#lsort").value, cmp = (x, y) => String(x).localeCompare(String(y), undefined, { sensitivity: "base" });
   if (by === "added") rows.sort((x, y) => y.added - x.added);
   if (by === "title") rows.sort((x, y) => cmp(x.title, y.title));
@@ -556,13 +573,27 @@ function drawLibrary() {
   $("#lsummary").textContent = `${LIB.length} songs` + (missing ? ` · ${missing} without lyrics` : "") +
     (rows.length !== LIB.length ? ` · showing ${rows.length}` : "");
   $("#library").innerHTML = rows.map(t => `
-    <div class="song pick" data-p="${esc(t.path)}" tabindex="0">
+    <div class="song pick${SEL && SEL.has(t.path) ? " on" : ""}" data-p="${esc(t.path)}" tabindex="0">
       <img src="${cover(t.path)}" alt="" loading="lazy">
       <div><b>${esc(t.title)}</b>${t.lyrics ? "" : '<span class="tag bad">no lyrics</span>'}${t.backup ? '<span class="tag">replaced</span>' : ""}
         <small>${esc(t.artist)} · ${esc(t.album)} · ${mmss(t.duration)}</small></div>
-      <button class="ghost more" aria-label="Song options" title="Song options">⋯</button>
+      ${SEL ? `<input type="checkbox" class="tick" tabindex="-1" aria-label="Selected"${SEL.has(t.path) ? " checked" : ""}>`
+        : '<button class="ghost more" aria-label="Song options" title="Song options">⋯</button>'}
     </div>`).join("") || '<p class="muted">No songs match.</p>';
+  drawSelBar();
 }
+function drawSelBar() {
+  $("#lselbar").hidden = !SEL;
+  $("#lselect").hidden = !!SEL;
+  if (!SEL) return;
+  $("#lselcount").textContent = `${SEL.size} selected`;
+  $("#lseldel").disabled = !SEL.size;
+  $("#lseldel").textContent = SEL.size > 1 ? `Delete ${SEL.size} songs` : "Delete";
+}
+$("#lselect").onclick = () => { SEL = new Set(); drawLibrary(); };
+$("#lseldone").onclick = () => { SEL = null; drawLibrary(); };
+$("#lselall").onclick = () => { SHOWN.forEach(t => SEL.add(t.path)); drawLibrary(); };
+$("#lseldel").onclick = () => showDelete(LIB.filter(t => SEL.has(t.path)));
 $("#lfilter").oninput = drawLibrary;
 $("#lnolyr").onchange = drawLibrary;
 $("#lsort").onchange = drawLibrary;
@@ -571,7 +602,15 @@ $("#lmissing").onclick = async () => {
   try { await post("/api/library/lyrics", {}); note("Looking up missing lyrics, see the queue"); refresh(); }
   catch (e) { msg(e.message); }
 };
-const openSong = el => { const row = el.closest(".pick"); if (row) showSong(byPath(row.dataset.p)); };
+const openSong = el => {
+  const row = el.closest(".pick"); if (!row) return;
+  if (!SEL) return showSong(byPath(row.dataset.p));
+  const p = row.dataset.p;
+  SEL.has(p) ? SEL.delete(p) : SEL.add(p);
+  row.classList.toggle("on", SEL.has(p));
+  row.querySelector(".tick").checked = SEL.has(p);
+  drawSelBar();
+};
 $("#library").addEventListener("click", e => openSong(e.target));
 $("#library").addEventListener("keydown", e => { if (e.key === "Enter") openSong(e.target); });
 
@@ -590,24 +629,28 @@ function showSong(t) {
   dlg.showModal();
   $("#sclose").onclick = closeDlg;
   dlg.querySelectorAll(".menu button").forEach(b => b.onclick = () =>
-    ({ lyrics: showLyrics, replace: showReplace, delete: showDelete, undo: undoReplace, offload: showOffload })[b.dataset.a](t));
+    ({ lyrics: showLyrics, replace: showReplace, delete: t => showDelete([t]), undo: undoReplace, offload: showOffload })[b.dataset.a](t));
 }
 const who = t => `<div class="who"><img src="${cover(t.path)}" alt=""><div><b>${esc(t.title)}</b>
   <div class="muted">${esc(t.artist)} · ${esc(t.album)}${t.year ? " · " + esc(t.year) : ""}</div></div></div>`;
 
-function showDelete(t) {
-  dlg.innerHTML = `<h2>Delete this song?</h2>${who(t)}
-    <p>This permanently deletes <code>${esc(t.path)}</code> from your music folder. Navidrome drops it (and its playlist entries) on the next scan. It can be downloaded again later.</p>
-    <p class="muted">Type <b>delete</b> to confirm.</p>
-    <input id="dconfirm" autocomplete="off" style="width:100%">
-    <div class="foot"><button class="ghost" id="dcancel">Cancel</button><button class="danger" id="dgo" disabled>Delete permanently</button></div>`;
+function showDelete(songs) {
+  const one = songs.length === 1, t = songs[0];
+  dlg.innerHTML = `<h2>${one ? "Delete this song?" : `Delete ${songs.length} songs?`}</h2>
+    ${one ? who(t) : `<ol class="dlist">${songs.map(s => `<li>${esc(s.title)} <span class="muted">· ${esc(s.artist)}</span></li>`).join("")}</ol>`}
+    <p>This permanently deletes ${one ? `<code>${esc(t.path)}</code>` : "these files"} from your music folder. Navidrome drops ${one ? "it" : "them"} (and ${one ? "its" : "their"} playlist entries) on the next scan. ${one ? "It" : "They"} can be downloaded again later.</p>
+    <div class="foot"><button class="ghost" id="dcancel">Cancel</button><button class="danger" id="dgo">${one ? "Delete permanently" : `Delete ${songs.length} songs`}</button></div>`;
   dlg.showModal();
-  $("#dconfirm").oninput = e => $("#dgo").disabled = e.target.value.trim().toLowerCase() !== "delete";
   $("#dcancel").onclick = closeDlg;
   $("#dgo").onclick = async () => {
     $("#dgo").disabled = true;
-    try { await post("/api/library/delete", { path: t.path, confirm: t.path }); closeDlg(); note(`Deleted ${t.title}`); loadLibrary(); }
-    catch (e) { closeDlg(); msg(e.message); }
+    const paths = songs.map(s => s.path);
+    try {
+      await post("/api/library/delete", { paths, confirm: paths });
+      closeDlg(); note(one ? `Deleted ${t.title}` : `Deleted ${songs.length} songs`);
+      if (SEL) SEL = new Set();
+      loadLibrary();
+    } catch (e) { closeDlg(); msg(e.message); }
   };
 }
 
