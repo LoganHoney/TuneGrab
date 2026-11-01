@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import discover, library, lyrics, navidrome, scheduler, settings, store
+from . import categories, discover, library, lyrics, navidrome, scheduler, settings, store
 from . import downloader as dl
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -182,10 +182,43 @@ def cookies_delete():
 def library_list():
     tracks = library.list_tracks()
     added = {r["path"]: r["added"] for r in store.q("SELECT path, added FROM sources")}
+    cats = categories.by_path()
     for t in tracks:
         t["backup"] = bool(library.backup_of(t["path"]))
         t["added"] = added.get(t["path"]) or t["mtime"]  # when TuneGrab downloaded it, else the file's date
+        t["category"] = cats.get(t["path"])
     return tracks
+
+
+# ---------------------------------------------------------------- categories (categories.py)
+@app.get("/api/categories")
+def categories_get():
+    return categories.summary()
+
+
+@app.post("/api/categories/song")
+def categories_song(body: dict):
+    try:
+        categories.set_song(body.get("path"), body.get("category"))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+@app.post("/api/categories/artist")
+def categories_artist(body: dict):
+    try:
+        n = categories.set_artist(str(body.get("artist") or ""), body.get("category") or None)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"songs": n}
+
+
+@app.post("/api/categories/resort")
+def categories_resort():
+    if not categories.resort():
+        raise HTTPException(409, "Already sorting, try again when it's done")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- settings page

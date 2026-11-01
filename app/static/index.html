@@ -80,6 +80,11 @@
   dialog .dlist { max-height: 40vh; overflow: auto; margin: 0 0 12px; padding-left: 18px; font-size: 14px; }
   .menu { display: grid; gap: 8px; }
   .menu button { text-align: left; display: block; width: 100%; padding: 10px 14px; }
+  .catpick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; } .menu .catpick button { width: auto; display: inline-block; padding: 6px 12px; }
+  .catcounts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+  .catcounts button { padding: 10px; text-align: center; } .catcounts b { display: block; font-size: 20px; }
+  .catcounts small { color: var(--muted); }
+  .tag.cat { color: var(--accent); border-color: var(--accent); }
   .menu button small { display: block; color: var(--muted); font-weight: 400; font-size: 12.5px; }
   .menu button.danger small { color: #c98b8b; }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
@@ -190,6 +195,7 @@
     <nav id="nav" hidden>
       <button data-tab="library"><b>Library</b><small>Your songs, lyrics and fixes</small></button>
       <button data-tab="discover"><b>Discover</b><small>Suggestions from your listening</small></button>
+      <button data-tab="categories"><b>Categories</b><small>Secular, Christian, Christmas, Bath Time</small></button>
       <button data-tab="playlists"><b>Playlists</b><small>TuneGrab playlists in Navidrome</small></button>
       <button data-tab="cleanup"><b>Cleanup</b><small>Songs you skip or never play</small></button>
       <button data-tab="settings"><b>Settings</b><small>YouTube cookies and server info</small></button>
@@ -213,6 +219,8 @@
         <input type="search" id="lfilter" placeholder="Filter by title, artist or album">
         <select id="lsort" aria-label="Sort by"><option value="artist">Artist</option><option value="added">Recently added</option>
           <option value="title">Title</option><option value="album">Album</option></select>
+        <select id="lcat" aria-label="Category"><option value="">All categories</option><option>Secular</option><option>Christian</option>
+          <option>Christmas</option><option>Bath Time</option><option value="-">Not sorted yet</option></select>
         <label><input type="checkbox" id="lnolyr"> No lyrics only</label>
         <button class="ghost" id="lmissing">Find missing lyrics</button>
         <button class="ghost" id="lselect">Select</button>
@@ -245,6 +253,21 @@
       <div class="toolbar"><b style="flex:1">Suggested for you</b><button class="ghost" id="srefresh">Find new suggestions</button></div>
       <p class="muted" id="sstatus"></p>
       <div class="songs sugg" id="suggestions"></div>
+    </div>
+
+    <div id="tab-categories" hidden>
+      <p class="muted">Every song is sorted into one category, and each category gets its own mixes, so Christian,
+        Christmas and Bath Time songs never end up in your everyday Daily Mix (and the other way round). Sorting is
+        automatic: Christmas titles, then your artist rules, then Apple Music's genre for the song or artist. New downloads
+        are sorted within a few minutes. The category is also written into the song's Genre, so Navidrome can browse it.</p>
+      <p id="catstatus"></p>
+      <div class="catcounts" id="catcounts"></div>
+      <h3>Artists</h3>
+      <p class="muted">Pick a category to put every song by an artist there (Christmas songs stay in Christmas).
+        "Automatic" lets Apple Music decide song by song. To move one song, open it in the Library.</p>
+      <div id="catartists"></div>
+      <div class="row" style="margin-top:12px"><button class="ghost" id="catresort">Sort everything again</button></div>
+      <p class="muted">Sorts all songs again from scratch. Songs and artists you set yourself keep your choice.</p>
     </div>
 
     <div id="tab-playlists" hidden>
@@ -310,14 +333,14 @@ async function api(path, opts = {}) {
 }
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) });
 
-const TITLES = { library: "Library", discover: "Discover", playlists: "Playlists", cleanup: "Cleanup", settings: "Settings" };
+const TITLES = { categories: "Categories", library: "Library", discover: "Discover", playlists: "Playlists", cleanup: "Cleanup", settings: "Settings" };
 let VIEW = "search";
 function show(tab) {
   closeMenu();
   if (tab === VIEW) return;
   VIEW = tab; msg();
   document.querySelectorAll("#nav [data-tab]").forEach(x => x.classList.toggle("on", x.dataset.tab === tab));
-  for (const t of ["search", "library", "discover", "playlists", "cleanup", "settings"])
+  for (const t of ["search", "library", "discover", "categories", "playlists", "cleanup", "settings"])
     $("#tab-" + t).hidden = tab !== t;
   $("#vtitle").textContent = TITLES[tab] || "";
   $("#vtitle").hidden = tab === "search";
@@ -325,6 +348,7 @@ function show(tab) {
   if (tab === "library") loadLibrary();
   if (tab === "discover") loadSuggestions();
   if (tab === "playlists") loadPlaylists();
+  if (tab === "categories") loadCategories();
   if (tab === "cleanup") loadCleanup();
 }
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => show(b.dataset.tab));
@@ -560,8 +584,8 @@ $("#offloaded").addEventListener("click", async e => {
   catch (err) { msg(err.message); e.target.disabled = false; }
 });
 function drawLibrary() {
-  const f = $("#lfilter").value.toLowerCase(), nolyr = $("#lnolyr").checked;
-  const rows = LIB.filter(t => (!nolyr || !t.lyrics) &&
+  const f = $("#lfilter").value.toLowerCase(), nolyr = $("#lnolyr").checked, cat = $("#lcat").value;
+  const rows = LIB.filter(t => (!nolyr || !t.lyrics) && (!cat || (cat === "-" ? !t.category : t.category === cat)) &&
     (!f || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(f)));
   SHOWN = rows;
   const by = $("#lsort").value, cmp = (x, y) => String(x).localeCompare(String(y), undefined, { sensitivity: "base" });
@@ -575,7 +599,7 @@ function drawLibrary() {
   $("#library").innerHTML = rows.map(t => `
     <div class="song pick${SEL && SEL.has(t.path) ? " on" : ""}" data-p="${esc(t.path)}" tabindex="0">
       <img src="${cover(t.path)}" alt="" loading="lazy">
-      <div><b>${esc(t.title)}</b>${t.lyrics ? "" : '<span class="tag bad">no lyrics</span>'}${t.backup ? '<span class="tag">replaced</span>' : ""}
+      <div><b>${esc(t.title)}</b>${t.lyrics ? "" : '<span class="tag bad">no lyrics</span>'}${t.backup ? '<span class="tag">replaced</span>' : ""}${t.category && t.category !== "Secular" ? `<span class="tag cat">${esc(t.category)}</span>` : ""}
         <small>${esc(t.artist)} · ${esc(t.album)} · ${mmss(t.duration)}</small></div>
       ${SEL ? `<input type="checkbox" class="tick" tabindex="-1" aria-label="Selected"${SEL.has(t.path) ? " checked" : ""}>`
         : '<button class="ghost more" aria-label="Song options" title="Song options">⋯</button>'}
@@ -596,6 +620,7 @@ $("#lselall").onclick = () => { SHOWN.forEach(t => SEL.add(t.path)); drawLibrary
 $("#lseldel").onclick = () => showDelete(LIB.filter(t => SEL.has(t.path)));
 $("#lfilter").oninput = drawLibrary;
 $("#lnolyr").onchange = drawLibrary;
+$("#lcat").onchange = drawLibrary;
 $("#lsort").onchange = drawLibrary;
 try { const v = localStorage.getItem("tg-sort"); if (v) $("#lsort").value = v; } catch (e) { /* private mode */ }
 $("#lmissing").onclick = async () => {
@@ -619,6 +644,8 @@ function showSong(t) {
   dlg.innerHTML = `${who(t)}
     <p class="muted">${mmss(t.duration)} · ${t.bitrate} kbps · ${t.lyrics ? "has lyrics" : "no lyrics yet"}${t.backup ? " · audio was replaced" : ""}</p>
     <div class="menu">
+      <div><b>Category</b> <small class="muted">${t.category ? "" : "not sorted yet"}</small>
+        <div class="catpick">${CATS.map(c => `<button class="${c === t.category ? "" : "ghost"}" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div></div>
       <button class="ghost" data-a="lyrics"><b>Lyrics</b><small>View, look up again or fix the timing</small></button>
       <button class="ghost" data-a="replace"><b>Replace audio</b><small>Swap in a better version; tags and play counts stay</small></button>
       ${t.backup ? '<button class="ghost" data-a="undo"><b>Undo replace</b><small>Put the previous audio back</small></button>' : ""}
@@ -628,7 +655,14 @@ function showSong(t) {
     <div class="foot"><button class="ghost" id="sclose">Close</button></div>`;
   dlg.showModal();
   $("#sclose").onclick = closeDlg;
-  dlg.querySelectorAll(".menu button").forEach(b => b.onclick = () =>
+  dlg.querySelectorAll("[data-cat]").forEach(b => b.onclick = async () => {
+    try {
+      await post("/api/categories/song", { path: t.path, category: b.dataset.cat });
+      t.category = b.dataset.cat; note(`Moved to ${b.dataset.cat}. The mixes catch up at the next rebuild.`);
+      closeDlg(); drawLibrary();
+    } catch (e) { msg(e.message); }
+  });
+  dlg.querySelectorAll(".menu > button").forEach(b => b.onclick = () =>
     ({ lyrics: showLyrics, replace: showReplace, delete: t => showDelete([t]), undo: undoReplace, offload: showOffload })[b.dataset.a](t));
 }
 const who = t => `<div class="who"><img src="${cover(t.path)}" alt=""><div><b>${esc(t.title)}</b>
@@ -782,6 +816,36 @@ async function loadPlaylists() {
     if (st.task === "playlists") setTimeout(() => !$("#tab-playlists").hidden && loadPlaylists(), 3000);
   } catch (e) { msg(e.message); }
 }
+// ------------------------------------------------------------ categories
+const CATS = ["Secular", "Christian", "Christmas", "Bath Time"];
+async function loadCategories() {
+  try {
+    const d = await api("/api/categories"), st = d.state;
+    $("#catstatus").innerHTML = st.running ? `<span class="ok">Sorting… ${st.done} of ${st.todo} songs</span>`
+      : st.error ? `<span class="err">${esc(st.error)}. It tries again in a few minutes.</span>`
+      : d.unsorted ? `<span class="muted">${d.unsorted} songs waiting to be sorted (starts within a few minutes).</span>`
+      : '<span class="ok">✓ Every song is sorted.</span>';
+    $("#catcounts").innerHTML = d.categories.map(c => `<button class="ghost" data-show="${esc(c)}"><b>${d.counts[c]}</b><small>${esc(c)}</small></button>`).join("");
+    $("#catartists").innerHTML = d.artists.map(a => {
+      const mix = Object.entries(a.cats).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${n} ${c}`).join(" · ");
+      return `<div class="pref"><span><b>${esc(a.artist)}</b><small>${a.songs} song${a.songs === 1 ? "" : "s"}${mix ? " · " + esc(mix) : ""}</small></span>
+        <select data-artist="${esc(a.artist)}"><option value="">Automatic</option>${CATS.map(c => `<option${a.rule === c ? " selected" : ""}>${c}</option>`).join("")}</select></div>`;
+    }).join("") || '<p class="muted">No songs yet.</p>';
+    $("#catartists").querySelectorAll("[data-artist]").forEach(sel => sel.onchange = async () => {
+      sel.disabled = true;
+      try {
+        const r = await post("/api/categories/artist", { artist: sel.dataset.artist, category: sel.value || null });
+        note(`${sel.dataset.artist}: ${r.songs} songs ${sel.value ? "set to " + sel.value : "back to automatic"}`);
+        loadCategories();
+      } catch (e) { msg(e.message); sel.disabled = false; }
+    });
+    $("#catcounts").querySelectorAll("[data-show]").forEach(b => b.onclick = () => { $("#lcat").value = b.dataset.show; show("library"); });
+    if (st.running) setTimeout(() => !$("#tab-categories").hidden && loadCategories(), 3000);
+  } catch (e) { msg(e.message); }
+}
+$("#catresort").onclick = async () => {
+  try { await post("/api/categories/resort", {}); note("Sorting everything again"); loadCategories(); } catch (e) { msg(e.message); }
+};
 // ------------------------------------------------------------ cleanup
 async function loadCleanup() {
   try {

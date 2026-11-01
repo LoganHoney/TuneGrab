@@ -205,45 +205,77 @@ def _spread(songs):
     return out
 
 
-def build_playlists():
-    pool = all_songs()
-    build_cleanup(pool)
-    now = time.time()
-    rng = random.Random(dt.date.today().isoformat())  # same picks all day, fresh ones tomorrow
-    played = [s for s in pool if (s.get("playCount") or 0) > 0]
-    n = settings.get("playlist_size")
+# the mixes for each category (categories.py): secular music keeps the original names, so the playlists you
+# already have stay the same; nothing ever crosses between categories
+MIXES = {
+    "Secular": ["Daily Mix", "Heavy Rotation", "Rediscover", "Fresh Additions", "Never Played", "Discoveries"],
+    "Christian": ["Daily Mix", "Heavy Rotation", "Fresh Additions"],
+    "Christmas": ["All"],
+    "Bath Time": ["All"],
+}
+ALL_MAX = 300   # an "All" playlist: every song in the category, shuffled each day
 
-    heavy = sorted([s for s in played if s["playCount"] >= 2 or s.get("starred")],
-                   key=lambda s: (-(s.get("playCount") or 0), -_ts(s.get("played"))))[:n]
-    rediscover = sorted([s for s in played if now - _ts(s.get("played")) > 30 * 86400],
-                        key=lambda s: -(s.get("playCount") or 0))[:n]
-    fresh = sorted([s for s in pool if now - _ts(s.get("created")) < 30 * 86400],
-                   key=lambda s: -_ts(s.get("created")))[:n]
+
+def _mixes(pool, kinds, rng, n, discovered):
+    now = time.time()
+    played = [s for s in pool if (s.get("playCount") or 0) > 0]
     never = [s for s in pool if not s.get("playCount")]
     rng.shuffle(never)
+    out = {}
+    if "Daily Mix" in kinds:
+        # mostly favourites (weighted by plays, stars and ratings), topped up with unplayed songs
+        weights = [(s.get("playCount") or 0) + (5 if s.get("starred") else 0) + (s.get("userRating") or 0) for s in played]
+        favs = []
+        cand = list(zip(played, weights))
+        while cand and len(favs) < int(n * 0.7):
+            pick = rng.choices(range(len(cand)), weights=[w + 0.5 for _, w in cand])[0]
+            favs.append(cand.pop(pick)[0])
+        daily = favs + never[: n - len(favs)]
+        rng.shuffle(daily)
+        out["Daily Mix"] = _spread(daily)
+    if "Heavy Rotation" in kinds:
+        out["Heavy Rotation"] = sorted([s for s in played if s["playCount"] >= 2 or s.get("starred")],
+                                       key=lambda s: (-(s.get("playCount") or 0), -_ts(s.get("played"))))[:n]
+    if "Rediscover" in kinds:
+        out["Rediscover"] = sorted([s for s in played if now - _ts(s.get("played")) > 30 * 86400],
+                                   key=lambda s: -(s.get("playCount") or 0))[:n]
+    if "Fresh Additions" in kinds:
+        out["Fresh Additions"] = sorted([s for s in pool if now - _ts(s.get("created")) < 30 * 86400],
+                                        key=lambda s: -_ts(s.get("created")))[:n]
+    if "Never Played" in kinds:
+        out["Never Played"] = never[:n]
+    if "Discoveries" in kinds:
+        by_path = {s.get("path"): s for s in pool}
+        out["Discoveries"] = [by_path[p] for p in discovered if p in by_path][:n]
+    if "All" in kinds:
+        everything = list(pool)
+        rng.shuffle(everything)
+        out["All"] = _spread(everything[:ALL_MAX])
+    return out
 
-    # Daily Mix: mostly favourites (weighted by plays, stars and ratings), topped up with unplayed songs
-    weights = [(s.get("playCount") or 0) + (5 if s.get("starred") else 0) + (s.get("userRating") or 0) for s in played]
-    favs = []
-    cand = list(zip(played, weights))
-    while cand and len(favs) < int(n * 0.7):
-        pick = rng.choices(range(len(cand)), weights=[w + 0.5 for _, w in cand])[0]
-        favs.append(cand.pop(pick)[0])
-    daily = favs + never[: n - len(favs)]
-    rng.shuffle(daily)
 
-    disc_paths = [r["path"] for r in store.q("SELECT path FROM discoveries ORDER BY at DESC")]
-    by_path = {s.get("path"): s for s in pool}
-    discoveries = [by_path[p] for p in disc_paths if p in by_path][:n]
+def _name(cat, kind):
+    if cat == "Secular":
+        return kind
+    return cat if kind == "All" else f"{cat} {kind}"
 
-    wanted = {
-        "Daily Mix": _spread(daily),
-        "Heavy Rotation": heavy,
-        "Rediscover": rediscover,
-        "Fresh Additions": fresh,
-        "Never Played": never[:n],
-        "Discoveries": discoveries,
-    }
+
+def build_playlists():
+    from . import categories
+    songs = all_songs()
+    build_cleanup(songs)
+    now = time.time()
+    rng = random.Random(dt.date.today().isoformat())  # same picks all day, fresh ones tomorrow
+    n = settings.get("playlist_size")
+    known = categories.by_path()
+    by_cat = {c: [] for c in MIXES}
+    for s in songs:
+        by_cat.setdefault(categories.of(s, known), []).append(s)
+    discovered = [r["path"] for r in store.q("SELECT path FROM discoveries ORDER BY at DESC")]
+    wanted = {}
+    for cat, kinds in MIXES.items():
+        for kind, tracks in _mixes(by_cat.get(cat) or [], kinds, rng, n, discovered).items():
+            wanted[_name(cat, kind)] = tracks
     existing = {p["name"]: p for p in (call("getPlaylists").get("playlists") or {}).get("playlist") or []
                 if p.get("owner") == USER}
     result = []

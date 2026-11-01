@@ -4,7 +4,7 @@ import os
 import threading
 import time
 
-from . import discover, library, navidrome, settings, store
+from . import categories, discover, library, navidrome, settings, store
 from . import downloader as dl
 
 log = logging.getLogger("tunegrab.scheduler")
@@ -98,6 +98,7 @@ def _maintenance_loop():
     if not store.get("last_backfill"):
         run_task("backfill", backfill_sources)
     while True:
+        categories.start()   # sorts new songs into categories (does nothing when all are sorted)
         if navidrome.enabled():
             if _due("playlists", PLAYLIST_HOURS):
                 run_task("playlists", playlists)

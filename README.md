@@ -108,6 +108,7 @@ If you added TuneGrab before the icon existed, delete the old shortcut and add i
 **With Navidrome connected** (optional)
 - **Discover**: daily suggestions from YouTube Music radio on your most-played and starred songs. Explicit songs are never suggested or downloaded. The top few are added automatically (`AUTO_ADD_SUGGESTIONS`, 0 to turn off).
 - **Playlists**, rebuilt every few hours and shared with every Navidrome account: Daily Mix, Heavy Rotation, Rediscover, Fresh Additions, Never Played and Discoveries.
+- **Categories** keep Secular, Christian, Christmas and Bath Time (kids) music apart. Every song is sorted automatically (Christmas titles, your artist rules, then Apple Music's genre via the free iTunes Search API) and the category is written into its Genre tag. The playlists above are secular only; Christian gets its own Daily Mix, Heavy Rotation and Fresh Additions, and Christmas and Bath Time get one playlist each. Move a song or a whole artist on the Categories page or in the song's menu.
 - **Cleanup**: songs you keep skipping and songs you never play, with **Keep** or **Offload**. Nothing moves on its own.
 
 ## Settings
